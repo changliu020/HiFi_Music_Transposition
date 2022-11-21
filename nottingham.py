@@ -13,12 +13,16 @@ def collate_fn(data):
 
 dataset = NottinghamDataset('./data/nottingham-dataset/wav')
 dataloader = DataLoader(dataset, batch_size=3, collate_fn=collate_fn)
+
+
 for i, (data, length) in enumerate(dataloader):
     if i > 0:
         break
     print(rnn.pack_padded_sequence(data, length, batch_first=True).data.shape)
 
 model = torch.nn.LSTM(1, 5, batch_first=True)
+
+
 flag = 0
 for i, (data, length) in enumerate(dataloader):
     if i > 0:
