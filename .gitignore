@@ -3,3 +3,4 @@ instrument-disentangle-master
 data.json
 *.wav
 __pycache__
+dataset
