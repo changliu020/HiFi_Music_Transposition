@@ -4,3 +4,4 @@ data.json
 *.wav
 __pycache__
 dataset
+tmp

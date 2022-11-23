@@ -11,6 +11,9 @@ from torchvision.utils import save_image
 
 import numpy as np
 
+from dataset import NottinghamDataset
+from torch.nn.utils import rnn
+
 class log_gaussian:
 
   def __call__(self, x, mu, var):
@@ -29,7 +32,7 @@ class Trainer:
     self.D = D
     self.Q = Q
 
-    self.batch_size = 100
+    self.batch_size = 5
 
   def _noise_sample(self, dis_c, con_c, noise, bs):
 
@@ -46,14 +49,14 @@ class Trainer:
 
   def train(self):
 
-    real_x = torch.FloatTensor(self.batch_size, 1, 28, 28).cpu()
-    label = torch.FloatTensor(self.batch_size, 1).cpu()
+    # real_x = torch.FloatTensor(self.batch_size, 1, 28, 28).cpu()
+    # label = torch.FloatTensor(self.batch_size, 1).cpu()
     dis_c = torch.FloatTensor(self.batch_size, 10).cpu()
     con_c = torch.FloatTensor(self.batch_size, 2).cpu()
     noise = torch.FloatTensor(self.batch_size, 62).cpu()
 
-    real_x = Variable(real_x)
-    label = Variable(label, requires_grad=False)
+    # real_x = Variable(real_x)
+    # label = Variable(label, requires_grad=False)
     dis_c = Variable(dis_c)
     con_c = Variable(con_c)
     noise = Variable(noise)
@@ -67,6 +70,15 @@ class Trainer:
 
     dataset = dset.MNIST('./dataset', transform=transforms.ToTensor(), download=True)
     dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=1)
+
+    def collate_fn(data):
+      data.sort(key=lambda d: d.shape[0], reverse=True)
+      data_length = [d.shape[0] for d in data]
+      data = rnn.pad_sequence(data, batch_first=True, padding_value=0)
+      return data, data_length
+    
+    dataset = NottinghamDataset('./data/nottingham-dataset/wav', 22050, transformation='mel_spectrogram')
+    dataloader = DataLoader(dataset, batch_size=self.batch_size, collate_fn=collate_fn)
 
     # fixed random variables
     c = np.linspace(-1, 1, 10).reshape(1, -1)
@@ -87,19 +99,25 @@ class Trainer:
         # real part
         optimD.zero_grad()
         
-        x, _ = batch_data
+        x, x_len = batch_data
 
         bs = x.size(0)
-        real_x.data.resize_(x.size())
-        label.data.resize_(bs, 1)
-        dis_c.data.resize_(bs, 10)
-        con_c.data.resize_(bs, 2)
-        noise.data.resize_(bs, 62)
+        # real_x.data.resize_(x.size())
+        # label.data.resize_(bs, 1)
+        # dis_c.data.resize_(bs, 10)
+        # con_c.data.resize_(bs, 2)
+        # noise.data.resize_(bs, 62)
         
-        real_x.data.copy_(x)
-        fe_out1 = self.FE(real_x)
+        # real_x.data.copy_(x)
+        x = rnn.pack_padded_sequence(x, x_len, batch_first=True)
+
+        fe_out1 = self.FE(x)
+        fe_out1, _ = rnn.pad_packed_sequence(fe_out1, batch_first=True)
+
         probs_real = self.D(fe_out1)
-        label.data.fill_(1)
+        # label.data.fill_(1)
+
+        label = torch.ones((bs, 1))
         loss_real = criterionD(probs_real, label)
         loss_real.backward()
 
