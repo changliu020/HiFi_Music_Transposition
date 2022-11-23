@@ -14,161 +14,171 @@ import numpy as np
 from dataset import NottinghamDataset
 from torch.nn.utils import rnn
 
+
 class log_gaussian:
 
-  def __call__(self, x, mu, var):
+    def __call__(self, x, mu, var):
 
-    logli = -0.5*(var.mul(2*np.pi)+1e-6).log() - \
+        logli = -0.5*(var.mul(2*np.pi)+1e-6).log() - \
             (x-mu).pow(2).div(var.mul(2.0)+1e-6)
-    
-    return logli.sum(1).mean().mul(-1)
+
+        return logli.sum(1).mean().mul(-1)
+
 
 class Trainer:
 
-  def __init__(self, G, FE, D, Q):
+    def __init__(self, G, FE, D, Q, device):
 
-    self.G = G
-    self.FE = FE
-    self.D = D
-    self.Q = Q
+        self.G = G.to(device)
+        self.FE = FE.to(device)
+        self.D = D.to(device)
+        self.Q = Q.to(device)
 
-    self.batch_size = 5
+        self.device = device
 
-  def _noise_sample(self, dis_c, con_c, noise, bs):
+        self.batch_size = 5
 
-    idx = np.random.randint(10, size=bs)
-    c = np.zeros((bs, 10))
-    c[range(bs),idx] = 1.0
+    def _noise_sample(self, dis_c, con_c, noise, bs):
 
-    dis_c.data.copy_(torch.Tensor(c))
-    con_c.data.uniform_(-1.0, 1.0)
-    noise.data.uniform_(-1.0, 1.0)
-    z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
+        idx = np.random.randint(10, size=bs)
+        c = np.zeros((bs, 10))
+        c[range(bs), idx] = 1.0
 
-    return z, idx
+        dis_c.data.copy_(torch.Tensor(c))
+        con_c.data.uniform_(-1.0, 1.0)
+        noise.data.uniform_(-1.0, 1.0)
+        z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
 
-  def train(self):
+        return z, idx
 
-    # real_x = torch.FloatTensor(self.batch_size, 1, 28, 28).cpu()
-    # label = torch.FloatTensor(self.batch_size, 1).cpu()
-    dis_c = torch.FloatTensor(self.batch_size, 10).cpu()
-    con_c = torch.FloatTensor(self.batch_size, 2).cpu()
-    noise = torch.FloatTensor(self.batch_size, 62).cpu()
+    def train(self):
 
-    # real_x = Variable(real_x)
-    # label = Variable(label, requires_grad=False)
-    dis_c = Variable(dis_c)
-    con_c = Variable(con_c)
-    noise = Variable(noise)
+        # real_x = torch.FloatTensor(self.batch_size, 1, 28, 28).to(self.device)
+        # label = torch.FloatTensor(self.batch_size, 1).to(self.device)
+        dis_c = torch.FloatTensor(self.batch_size, 10).to(self.device)
+        con_c = torch.FloatTensor(self.batch_size, 2).to(self.device)
+        noise = torch.FloatTensor(self.batch_size, 62).to(self.device)
 
-    criterionD = nn.BCELoss().cpu()
-    criterionQ_dis = nn.CrossEntropyLoss().cpu()
-    criterionQ_con = log_gaussian()
+        # real_x = Variable(real_x)
+        # label = Variable(label, requires_grad=False)
+        dis_c = Variable(dis_c)
+        con_c = Variable(con_c)
+        noise = Variable(noise)
 
-    optimD = optim.Adam([{'params':self.FE.parameters()}, {'params':self.D.parameters()}], lr=0.0002, betas=(0.5, 0.99))
-    optimG = optim.Adam([{'params':self.G.parameters()}, {'params':self.Q.parameters()}], lr=0.001, betas=(0.5, 0.99))
+        criterionD = nn.BCELoss().to(self.device)
+        criterionQ_dis = nn.CrossEntropyLoss().to(self.device)
+        criterionQ_con = log_gaussian()
 
-    dataset = dset.MNIST('./dataset', transform=transforms.ToTensor(), download=True)
-    dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, num_workers=1)
+        optimD = optim.Adam([{'params': self.FE.parameters()}, {
+                            'params': self.D.parameters()}], lr=0.0002, betas=(0.5, 0.99))
+        optimG = optim.Adam([{'params': self.G.parameters()}, {
+                            'params': self.Q.parameters()}], lr=0.001, betas=(0.5, 0.99))
 
-    def collate_fn(data):
-      data.sort(key=lambda d: d.shape[0], reverse=True)
-      data_length = [d.shape[0] for d in data]
-      data = rnn.pad_sequence(data, batch_first=True, padding_value=0)
-      return data, data_length
-    
-    dataset = NottinghamDataset('./data/nottingham-dataset/wav', 22050, transformation='mel_spectrogram')
-    dataloader = DataLoader(dataset, batch_size=self.batch_size, collate_fn=collate_fn)
+        dataset = dset.MNIST(
+            './dataset', transform=transforms.ToTensor(), download=True)
+        dataloader = DataLoader(
+            dataset, batch_size=self.batch_size, shuffle=True, num_workers=1)
 
-    # fixed random variables
-    c = np.linspace(-1, 1, 10).reshape(1, -1)
-    c = np.repeat(c, 10, 0).reshape(-1, 1)
+        def collate_fn(data):
+            data.sort(key=lambda d: d.shape[0], reverse=True)
+            data_length = [d.shape[0] for d in data]
+            data = rnn.pad_sequence(data, batch_first=True, padding_value=0)
+            return data, data_length
 
-    c1 = np.hstack([c, np.zeros_like(c)])
-    c2 = np.hstack([np.zeros_like(c), c])
+        dataset = NottinghamDataset(
+            './data/nottingham-dataset/wav', 22050, transformation='mel_spectrogram')
+        dataloader = DataLoader(
+            dataset, batch_size=self.batch_size, collate_fn=collate_fn)
 
-    idx = np.arange(10).repeat(10)
-    one_hot = np.zeros((100, 10))
-    one_hot[range(100), idx] = 1
-    fix_noise = torch.Tensor(100, 62).uniform_(-1, 1)
+        # fixed random variables
+        c = np.linspace(-1, 1, 10).reshape(1, -1)
+        c = np.repeat(c, 10, 0).reshape(-1, 1)
 
+        c1 = np.hstack([c, np.zeros_like(c)])
+        c2 = np.hstack([np.zeros_like(c), c])
 
-    for epoch in range(100):
-      for num_iters, batch_data in enumerate(dataloader, 0):
+        idx = np.arange(10).repeat(10)
+        one_hot = np.zeros((100, 10))
+        one_hot[range(100), idx] = 1
+        fix_noise = torch.Tensor(100, 62).uniform_(-1, 1)
 
-        # real part
-        optimD.zero_grad()
-        
-        x, x_len = batch_data
+        for epoch in range(100):
+            for num_iters, batch_data in enumerate(dataloader, 0):
 
-        bs = x.size(0)
-        # real_x.data.resize_(x.size())
-        # label.data.resize_(bs, 1)
-        # dis_c.data.resize_(bs, 10)
-        # con_c.data.resize_(bs, 2)
-        # noise.data.resize_(bs, 62)
-        
-        # real_x.data.copy_(x)
-        x = rnn.pack_padded_sequence(x, x_len, batch_first=True)
+                # real part
+                optimD.zero_grad()
 
-        fe_out1 = self.FE(x)
-        fe_out1, _ = rnn.pad_packed_sequence(fe_out1, batch_first=True)
+                x, x_len = batch_data
+                x = x.to(self.device)
 
-        probs_real = self.D(fe_out1)
-        # label.data.fill_(1)
+                bs = x.size(0)
+                # real_x.data.resize_(x.size())
+                # label.data.resize_(bs, 1)
+                # dis_c.data.resize_(bs, 10)
+                # con_c.data.resize_(bs, 2)
+                # noise.data.resize_(bs, 62)
 
-        label = torch.ones((bs, 1))
-        loss_real = criterionD(probs_real, label)
-        loss_real.backward()
+                # real_x.data.copy_(x)
+                x = rnn.pack_padded_sequence(x, x_len, batch_first=True)
 
-        # fake part
-        z, idx = self._noise_sample(dis_c, con_c, noise, bs)
-        fake_x = self.G(z)
-        fe_out2 = self.FE(fake_x.detach())
-        probs_fake = self.D(fe_out2)
-        label.data.fill_(0)
-        loss_fake = criterionD(probs_fake, label)
-        loss_fake.backward()
+                fe_out1 = self.FE(x)
+                fe_out1, _ = rnn.pad_packed_sequence(fe_out1, batch_first=True)
 
-        D_loss = loss_real + loss_fake
+                probs_real = self.D(fe_out1)
+                # label.data.fill_(1)
 
-        optimD.step()
-        
-        # G and Q part
-        optimG.zero_grad()
+                label = torch.ones((bs, 1)).to(self.device)
+                loss_real = criterionD(probs_real, label)
+                loss_real.backward()
 
-        fe_out = self.FE(fake_x)
-        probs_fake = self.D(fe_out)
-        label.data.fill_(1.0)
+                # fake part
+                z, idx = self._noise_sample(dis_c, con_c, noise, bs)
+                fake_x = self.G(z)
+                fe_out2 = self.FE(fake_x.detach())
+                probs_fake = self.D(fe_out2)
+                label.data.fill_(0)
+                loss_fake = criterionD(probs_fake, label)
+                loss_fake.backward()
 
-        reconstruct_loss = criterionD(probs_fake, label)
-        
-        q_logits, q_mu, q_var = self.Q(fe_out)
-        class_ = torch.LongTensor(idx).cpu()
-        target = Variable(class_)
-        dis_loss = criterionQ_dis(q_logits, target)
-        con_loss = criterionQ_con(con_c, q_mu, q_var)*0.1
-        
-        G_loss = reconstruct_loss + dis_loss + con_loss
-        G_loss.backward()
-        optimG.step()
+                D_loss = loss_real + loss_fake
 
-        if num_iters % 100 == 0:
+                optimD.step()
 
-          print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}'.format(
-            epoch, num_iters, D_loss.data.cpu().numpy(),
-            G_loss.data.cpu().numpy())
-          )
+                # G and Q part
+                optimG.zero_grad()
 
-          noise.data.copy_(fix_noise)
-          dis_c.data.copy_(torch.Tensor(one_hot))
+                fe_out = self.FE(fake_x)
+                probs_fake = self.D(fe_out)
+                label.data.fill_(1.0)
 
-          con_c.data.copy_(torch.from_numpy(c1))
-          z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
-          x_save = self.G(z)
-          save_image(x_save.data, './tmp/c1.png', nrow=10)
+                reconstruct_loss = criterionD(probs_fake, label)
 
-          con_c.data.copy_(torch.from_numpy(c2))
-          z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
-          x_save = self.G(z)
-          save_image(x_save.data, './tmp/c2.png', nrow=10)
+                q_logits, q_mu, q_var = self.Q(fe_out)
+                class_ = torch.LongTensor(idx).to(self.device)
+                target = Variable(class_)
+                dis_loss = criterionQ_dis(q_logits, target)
+                con_loss = criterionQ_con(con_c, q_mu, q_var)*0.1
+
+                G_loss = reconstruct_loss + dis_loss + con_loss
+                G_loss.backward()
+                optimG.step()
+
+                if num_iters % 100 == 0:
+
+                    print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}'.format(
+                        epoch, num_iters, D_loss.data.cpu().numpy(),
+                        G_loss.data.cpu().numpy())
+                    )
+
+                    noise.data.copy_(fix_noise)
+                    dis_c.data.copy_(torch.Tensor(one_hot))
+
+                    con_c.data.copy_(torch.from_numpy(c1))
+                    z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
+                    x_save = self.G(z)
+                    save_image(x_save.data, './tmp/c1.png', nrow=10)
+
+                    con_c.data.copy_(torch.from_numpy(c2))
+                    z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
+                    x_save = self.G(z)
+                    save_image(x_save.data, './tmp/c2.png', nrow=10)
