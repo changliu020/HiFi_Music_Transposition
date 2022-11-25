@@ -36,7 +36,7 @@ class Trainer:
 
         self.device = device
 
-        self.batch_size = 5
+        self.batch_size = 10
 
     def _noise_sample(self, dis_c, con_c, noise, bs):
 
@@ -46,24 +46,27 @@ class Trainer:
 
         dis_c.data.copy_(torch.Tensor(c))
         con_c.data.uniform_(-1.0, 1.0)
-        noise.data.uniform_(-1.0, 1.0)
-        z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
+        # noise.data.uniform_(-1.0, 1.0)
+        dis_c = dis_c.unsqueeze(1).repeat(1, noise.shape[1], 1)
+        con_c = con_c.unsqueeze(1).repeat(1, noise.shape[1], 1)
+        z = torch.cat([noise, dis_c, con_c], 2)
+        # z = z.view(-1, 74, 1, 1)
 
         return z, idx
 
     def train(self):
 
         # real_x = torch.FloatTensor(self.batch_size, 1, 28, 28).to(self.device)
-        # label = torch.FloatTensor(self.batch_size, 1).to(self.device)
+        label = torch.FloatTensor(self.batch_size, 1).to(self.device)
         dis_c = torch.FloatTensor(self.batch_size, 10).to(self.device)
         con_c = torch.FloatTensor(self.batch_size, 2).to(self.device)
-        noise = torch.FloatTensor(self.batch_size, 62).to(self.device)
+        # noise = torch.FloatTensor(self.batch_size, 62).to(self.device)
 
         # real_x = Variable(real_x)
-        # label = Variable(label, requires_grad=False)
+        label = Variable(label, requires_grad=False)
         dis_c = Variable(dis_c)
         con_c = Variable(con_c)
-        noise = Variable(noise)
+        # noise = Variable(noise)
 
         criterionD = nn.BCELoss().to(self.device)
         criterionQ_dis = nn.CrossEntropyLoss().to(self.device)
@@ -92,17 +95,17 @@ class Trainer:
 
         # fixed random variables
         c = np.linspace(-1, 1, 10).reshape(1, -1)
-        c = np.repeat(c, 10, 0).reshape(-1, 1)
+        c = np.repeat(c, 1, 0).reshape(-1, 1)
 
         c1 = np.hstack([c, np.zeros_like(c)])
         c2 = np.hstack([np.zeros_like(c), c])
 
-        idx = np.arange(10).repeat(10)
-        one_hot = np.zeros((100, 10))
-        one_hot[range(100), idx] = 1
-        fix_noise = torch.Tensor(100, 62).uniform_(-1, 1)
+        idx = np.arange(10).repeat(1)
+        one_hot = np.zeros((self.batch_size, 10))
+        one_hot[range(self.batch_size), idx] = 1
+        # fix_noise = torch.Tensor(100, 62).uniform_(-1, 1)
 
-        for epoch in range(100):
+        for epoch in range(10):
             for num_iters, batch_data in enumerate(dataloader, 0):
 
                 # real part
@@ -113,7 +116,7 @@ class Trainer:
 
                 bs = x.size(0)
                 # real_x.data.resize_(x.size())
-                # label.data.resize_(bs, 1)
+                label.data.resize_(bs, 1)
                 # dis_c.data.resize_(bs, 10)
                 # con_c.data.resize_(bs, 2)
                 # noise.data.resize_(bs, 62)
@@ -122,19 +125,29 @@ class Trainer:
                 x = rnn.pack_padded_sequence(x, x_len, batch_first=True)
 
                 fe_out1 = self.FE(x)
-                fe_out1, _ = rnn.pad_packed_sequence(fe_out1, batch_first=True)
+                fe_out1, fe_out_len = rnn.pad_packed_sequence(fe_out1, batch_first=True)
+                # zeros_c = torch.zeros_like(con_c)
+                # fe_out1 = torch.cat((fe_out1, zeros_c.unsqueeze(1).repeat(1, fe_out1.shape[1], 1)), 2)
 
                 probs_real = self.D(fe_out1)
-                # label.data.fill_(1)
+                label.data.fill_(1)
 
-                label = torch.ones((bs, 1)).to(self.device)
+                # label = torch.ones((bs, 1)).to(self.device)
                 loss_real = criterionD(probs_real, label)
                 loss_real.backward()
 
                 # fake part
-                z, idx = self._noise_sample(dis_c, con_c, noise, bs)
+                z, idx = self._noise_sample(dis_c, con_c, fe_out1, bs)
+
+                # fe_out1_cat = torch.cat((con_c.unsqueeze(1).repeat(1, fe_out1.shape[1], 1), fe_out1), 2)
+                z = rnn.pack_padded_sequence(z, fe_out_len, batch_first=True)
+
                 fake_x = self.G(z)
-                fe_out2 = self.FE(fake_x.detach())
+                fake_x, fake_x_len = rnn.pad_packed_sequence(fake_x, batch_first=True)
+                fake_x = rnn.pack_padded_sequence(fake_x.detach(), fake_x_len, batch_first=True)
+
+                fe_out2 = self.FE(fake_x)
+                fe_out2, _ = rnn.pad_packed_sequence(fe_out2, batch_first=True)
                 probs_fake = self.D(fe_out2)
                 label.data.fill_(0)
                 loss_fake = criterionD(probs_fake, label)
@@ -148,6 +161,8 @@ class Trainer:
                 optimG.zero_grad()
 
                 fe_out = self.FE(fake_x)
+                fe_out, _ = rnn.pad_packed_sequence(fe_out, batch_first=True)
+
                 probs_fake = self.D(fe_out)
                 label.data.fill_(1.0)
 
@@ -163,22 +178,22 @@ class Trainer:
                 G_loss.backward()
                 optimG.step()
 
-                if num_iters % 100 == 0:
+                if num_iters % 10 == 0:
 
                     print('Epoch/Iter:{0}/{1}, Dloss: {2}, Gloss: {3}'.format(
                         epoch, num_iters, D_loss.data.cpu().numpy(),
                         G_loss.data.cpu().numpy())
                     )
 
-                    noise.data.copy_(fix_noise)
+                    # noise.data.copy_(fix_noise)
                     dis_c.data.copy_(torch.Tensor(one_hot))
 
                     con_c.data.copy_(torch.from_numpy(c1))
-                    z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
-                    x_save = self.G(z)
-                    save_image(x_save.data, './tmp/c1.png', nrow=10)
+                    # z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
+                    # x_save = self.G(z)
+                    # save_image(x_save.data, './tmp/c1.png', nrow=10)
 
                     con_c.data.copy_(torch.from_numpy(c2))
-                    z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
-                    x_save = self.G(z)
-                    save_image(x_save.data, './tmp/c2.png', nrow=10)
+                    # z = torch.cat([noise, dis_c, con_c], 1).view(-1, 74, 1, 1)
+                    # x_save = self.G(z)
+                    # save_image(x_save.data, './tmp/c2.png', nrow=10)

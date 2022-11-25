@@ -18,7 +18,7 @@ class FrontEnd(nn.Module):
         #   nn.LeakyReLU(0.1, inplace=True),
         # )
 
-        self.main = nn.LSTM(64, 1024, batch_first=True)
+        self.main = nn.LSTM(64, 1024, num_layers=1, batch_first=True)
 
     def forward(self, x):
         output, _ = self.main(x)
@@ -30,19 +30,19 @@ class D(nn.Module):
     def __init__(self):
         super(D, self).__init__()
 
-        # self.main = nn.Sequential(
-        #   nn.Conv2d(1024, 1, 1),
-        #   nn.Sigmoid()
-        # )
-
         self.main = nn.Sequential(
-            nn.Linear(1024, 1),
-            nn.Sigmoid()
+          nn.Conv2d(1024, 1, 1),
+          nn.Sigmoid()
         )
 
+        # self.main = nn.Sequential(
+        #     nn.Linear(1024, 1),
+        #     nn.Sigmoid()
+        # )
+
     def forward(self, x):
-        output = self.main(x[:, -1, :])
-        # output = output.view(-1, 1)
+        output = self.main(x[:, -1, :].unsqueeze(-1).unsqueeze(-1))
+        output = output.view(-1, 1)
         return output
 
 
@@ -60,7 +60,7 @@ class Q(nn.Module):
 
     def forward(self, x):
 
-        y = self.conv(x)
+        y = self.conv(x[:, -1, :].unsqueeze(-1).unsqueeze(-1))
 
         disc_logits = self.conv_disc(y).squeeze()
 
@@ -75,22 +75,24 @@ class G(nn.Module):
     def __init__(self):
         super(G, self).__init__()
 
-        self.main = nn.Sequential(
-            nn.ConvTranspose2d(74, 1024, 1, 1, bias=False),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(1024, 128, 7, 1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(64, 1, 4, 2, 1, bias=False),
-            nn.Sigmoid()
-        )
+        # self.main = nn.Sequential(
+        #     nn.ConvTranspose2d(74, 1024, 1, 1, bias=False),
+        #     nn.BatchNorm2d(1024),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(1024, 128, 7, 1, bias=False),
+        #     nn.BatchNorm2d(128),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),
+        #     nn.BatchNorm2d(64),
+        #     nn.ReLU(True),
+        #     nn.ConvTranspose2d(64, 1, 4, 2, 1, bias=False),
+        #     nn.Sigmoid()
+        # )
+
+        self.main = nn.LSTM(1036, 64, num_layers=1, batch_first=True)
 
     def forward(self, x):
-        output = self.main(x)
+        output, _ = self.main(x)
         return output
 
 
