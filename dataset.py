@@ -20,9 +20,7 @@ class NottinghamDataset(Dataset):
         if transformation == 'mfcc':
             self.transformation = torchaudio.transforms.MFCC(
                 sample_rate=target_sample_rate,
-                n_fft=1024,
-                hop_length=512,
-                n_mels=64
+                melkwargs={"n_fft": 1024, "hop_length": 512, "n_mels": 40},
             )
         else:
             self.transformation = None

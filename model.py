@@ -18,7 +18,7 @@ class FrontEnd(nn.Module):
         #   nn.LeakyReLU(0.1, inplace=True),
         # )
 
-        self.main = nn.LSTM(64, 1024, num_layers=1, batch_first=True)
+        self.main = nn.LSTM(40, 1024, num_layers=1, batch_first=True)
 
     def forward(self, x):
         output, _ = self.main(x)
@@ -89,7 +89,7 @@ class G(nn.Module):
         #     nn.Sigmoid()
         # )
 
-        self.main = nn.LSTM(1036, 64, num_layers=1, batch_first=True)
+        self.main = nn.LSTM(1036, 40, num_layers=1, batch_first=True)
 
     def forward(self, x):
         output, _ = self.main(x)
