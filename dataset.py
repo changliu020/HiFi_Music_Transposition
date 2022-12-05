@@ -7,11 +7,18 @@ import torchaudio
 class NottinghamDataset(Dataset):
     def __init__(self, data_dir, target_sample_rate, transformation=None):
         self.data_dir = data_dir
-        self.name_list = os.listdir(self.data_dir)
+        self.name_list = []
+        for name in os.listdir(self.data_dir):
+            if os.path.getsize(os.path.join(data_dir, name)) < 31457280:
+                self.name_list.append(name)
+        
+        if len(self.name_list) % 10 > 0:
+            self.name_list = self.name_list[:-(len(self.name_list) % 10)]
+
         self.target_sample_rate = target_sample_rate
         # self.num_samples = num_samples
-        if transformation == 'mel_spectrogram':
-            self.transformation = torchaudio.transforms.MelSpectrogram(
+        if transformation == 'mfcc':
+            self.transformation = torchaudio.transforms.MFCC(
                 sample_rate=target_sample_rate,
                 n_fft=1024,
                 hop_length=512,
@@ -48,7 +55,7 @@ class NottinghamDataset(Dataset):
 
 if __name__ == '__main__':
     dataset = NottinghamDataset('./data/nottingham-dataset/wav', target_sample_rate=22050,
-                                transformation='mel_spectrogram')
+                                transformation='mfcc')
     print(dataset[0].shape)
     print(dataset[1].shape)
     print(dataset[2].shape)
