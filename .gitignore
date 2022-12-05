@@ -6,3 +6,5 @@ __pycache__
 dataset
 tmp
 backup
+.ipynb_checkpoints
+checkpoints

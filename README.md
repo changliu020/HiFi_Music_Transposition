@@ -1,1 +1,2 @@
 # HiFi_Music_Transposition
+This repo is the project repo for FA22 CSE291: Deep Generative Models. Please refer to dataset.py for data processing and to https://github.com/pianomania/infoGAN-pytorch for training.

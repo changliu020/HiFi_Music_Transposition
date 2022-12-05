@@ -221,8 +221,8 @@ class Trainer:
             if epoch == 0:
                 torch.save(loss_arr, './tmp/loss_arr.pt')
             
-        torch.save({'epoch_cnt': num_epoch, 'trainer': self, 'index': self.generate_random_str(5)},
-                    './checkpoints' + '/' + '.pt')
+        torch.save({'epoch_cnt': num_epoch, 'trainer': self},
+                    './checkpoints' + '/' + self.generate_random_str(5) + '.pt')
 
 
     def generate_random_str(self, randomLength=8):
